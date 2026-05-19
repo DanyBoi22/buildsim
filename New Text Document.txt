@@ -1,0 +1,98 @@
+import folium
+from folium.plugins import GeoSearchControl
+import geojson
+
+
+def render_district(model, buildings: pd.DataFrame, output_file="district.html"):
+    """Render the district with building footprints colored by heat demand."""
+    
+    # Get agent data
+    agent_data = model.datacollector.get_agent_vars_dataframe()
+    
+    # Take last timestep and align with buildings
+    if len(agent_data) == 0:
+        raise ValueError("No agent data collected - did agents produce any output?")
+    
+    last_step = agent_data.xs(agent_data.index.max(), level="Step")
+    
+    # Match by index (assuming buildings are aligned)
+    if len(last_step) < len(buildings):
+        warnings.warn(f"Only {len(last_step)} agents found, using available data", UserWarning)
+    
+    buildings = buildings.copy()
+    buildings["heat_demand"] = last_step["heat_demand"].values[:len(buildings)]
+    
+    # Verify we have valid geometry
+    if "geometry" not in buildings.columns:
+        raise ValueError('Buildings DataFrame missing "geometry" column')
+    
+    # Create map
+    m = folium.Map(
+        location=[53.49500, 10.01111],
+        zoom_start=16,
+        tiles="cartodb positron"
+    )
+    
+    # Add building layer
+    if not buildings.empty:
+        geojson_data = geojson.dumps(buildings.to_crs(epsg=4326), ensure_ascii=False)
+        
+        # Create popup content
+        def popup_html(row):
+            return f"<b>Heat Demand:</b> {row['heat_demand']:.1f} kW"
+        
+        # Build GeoJSON with proper formatting
+        geojson_features = []
+        for _, row in buildings.iterrows():
+            if not row.geometry.is_empty:
+                feature = geojson.Feature(
+                    geometry=row.geometry.__geo_interface__,
+                    properties={
+                        "demand": float(row["heat_demand"]),
+                        "popup": popup_html(row)
+                    }
+                )
+                geojson_features.append(feature)
+        
+        if geojson_features:
+            # Version 1: Using GeoJson plugin for better performance
+            folium.GeoJson(
+                geojson.FeatureCollection(geojson_features),
+                style_function=lambda feature: {
+                    "fillColor": "red" if feature["properties"]["demand"] > 10 else "green",
+                    "fillOpacity": 0.6,
+                    "weight": 1,
+                    "color": "black"
+                },
+                popup=folium.GeoJsonPopup(
+                    fields=["popup"],
+                    aliases=[""],
+                    localize=True
+                )
+            ).add_to(m)
+            
+            # Version 2: Alternative with GeoSearch (better for interaction)
+            '''
+            search_control = GeoSearchControl(
+                position="topleft",
+                provider="geolocation",
+                show_polygon=True,
+                auto_CLOSE=False
+            )
+            m.add_child(search_control)
+            '''
+    
+    # Add layer control if multiple layers exist
+    folium.LayerControl().add_to(m)
+    
+    # Save and return
+    if output_file:
+        print(f"Saving district visualization to {output_file}")
+        m.save(output_file)
+        try:
+            import webbrowser
+            webbrowser.open(f"file://{os.path.abspath(output_file)}")
+        except Exception as e:
+            print(f"Could not open browser: {e}")
+    
+    return m
