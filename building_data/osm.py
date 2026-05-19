@@ -23,3 +23,5 @@ def get_buildings(place: str) -> gpd.GeoDataFrame:
     buildings["building_id"] = buildings.index
     
     return buildings
+
+# TODO> Add more options to fetch data from osmnx, e.g. by bounding box, or with more tags (e.g. construction year, building use, etc.)

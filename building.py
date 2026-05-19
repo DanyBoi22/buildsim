@@ -15,6 +15,6 @@ class BuildingAgent(mesa.Agent):
     
     def step(self):
         # Calculate heat demand
-        # TODO>Later dynamic calculation based on weather, occupancy, etc.
+        # TODO>Later dynamic calculation based on weather, occupancy or load profiles
         annual_demand = self.area_m2 * self.heat_demand_per_m2
         self.heat_demand = annual_demand / 8760  # hourly value

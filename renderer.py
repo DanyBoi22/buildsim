@@ -2,10 +2,9 @@ import folium
 import geopandas as gpd
 import osmnx as ox
 import pandas as pd
+import mesa
 
-import model
-
-def render_district(model, buildings: pd.DataFrame, output_file="district.html"):
+def render_district(model: mesa.Model, buildings: pd.DataFrame, output_file="district.html"):
     """
     Render the district with building footprints colored by heat demand.
     """

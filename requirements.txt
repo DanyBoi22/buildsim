@@ -1,0 +1,6 @@
+pandas
+osmnx
+geopandas
+mesa
+mesa-geo
+folium
