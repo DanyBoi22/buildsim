@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+.vscode/
+dist/
+build/
+*.egg-info/
+results/*
