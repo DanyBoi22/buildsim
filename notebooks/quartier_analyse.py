@@ -106,10 +106,12 @@ def limit_gdf(base_gdf: gpd.GeoDataFrame, limiting_gdf: gpd.GeoDataFrame):
     #print(filtered_buildings_gdf.head())
     return limited_gdf
 
+
 def plot_with_border(base_gdf: gpd.GeoDataFrame, border_gdf: gpd.GeoDataFrame):
     ax = base_gdf.plot(figsize=(10, 10), edgecolor="black", facecolor="none")
     border_gdf.boundary.plot(ax=ax, color="red")
 
+    
 def classify_building_type(code):
     """
     Params: 
@@ -198,7 +200,7 @@ def plot_building_type_map(buildings_gdf, border_gdf=None, ax=None, title=None):
 
     return fig, ax
     
-def plot_construction_year_histogram(buildings_gdf, bins=20, ax=None):
+def plot_construction_year_histogram(buildings_gdf, bins=None, ax=None):
 
     if ax is None:
         figsize=(12, 6)
@@ -207,6 +209,7 @@ def plot_construction_year_histogram(buildings_gdf, bins=20, ax=None):
         fig = ax.figure
         
     valid = buildings_gdf.dropna(subset=["baujahr"])
+    valid = valid[valid["baujahr"] >= 1800]
 
     datasets = []
     labels = []
@@ -222,13 +225,23 @@ def plot_construction_year_histogram(buildings_gdf, bins=20, ax=None):
         labels.append(category)
         colors.append(color)
 
-    ax.hist(
-        datasets,
-        bins=bins,
-        stacked=True,
-        label=labels,
-        color=colors
-    )
+    if bins is None:
+        bins = np.arange(int(valid["baujahr"].min()), int(valid["baujahr"].max()) + 2)
+        ax.hist(
+            datasets,
+            bins=bins,
+            stacked=True,
+            label=labels,
+            color=colors
+        )
+    else:
+        ax.hist(
+            datasets,
+            bins=bins,
+            stacked=True,
+            label=labels,
+            color=colors
+        )
 
     ax.set_title("Verteilung der bekannten Baujahren")
     ax.set_xlabel("Baujahr")
@@ -243,7 +256,8 @@ def plot_area_distribution(buildings_gdf, area_column, area_label, building_type
     subset = buildings_gdf[buildings_gdf["building_type"] == building_type].copy()
     subset = subset.dropna(subset=[area_column])
     subset = subset.sort_values(area_column, ascending=False)
-
+    total_area = subset[area_column].sum()
+    
     color = COLOR_MAP[building_type]
 
     if top_n:
@@ -254,11 +268,15 @@ def plot_area_distribution(buildings_gdf, area_column, area_label, building_type
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig = ax.figure
-
+    
+    legend_elements = []
+    legend_elements.append(Patch(facecolor=color, label=f"Gesamtfläche: {total_area:,.0f} m²"))
+    
     ax.bar(range(len(subset)), subset[area_column], color=color)
     ax.set_title(f"{building_type} - {area_label}")
     ax.set_xlabel("Gebäude")
     ax.set_ylabel(f"{area_label} [m²]")
+    ax.legend(handles=legend_elements)
 
     return fig, ax
 
@@ -268,6 +286,8 @@ def plot_roof_area_distribution(buildings_gdf, area_column, area_label, top_n=No
     subset = buildings_gdf[buildings_gdf["area"] != 0].copy()
     subset = subset.dropna(subset=[area_column])
     subset = subset.sort_values(area_column, ascending=False)
+
+    total_usable = subset["usable_roof_area"].sum()
 
     color = "tab:orange"
 
@@ -280,10 +300,14 @@ def plot_roof_area_distribution(buildings_gdf, area_column, area_label, top_n=No
     else:
         fig = ax.figure
 
+    legend_elements = []
+    legend_elements.append(Patch(facecolor=color, label=f"Gesamte nutzbare Dachfläche: {total_usable:,.0f} m²"))
+
     ax.bar(range(len(subset)), subset[area_column], color=color)
     ax.set_title(f"{area_label}")
     ax.set_xlabel("Gebäude")
     ax.set_ylabel(f"{area_label} [m²]")
+    ax.legend(handles=legend_elements)
 
     return fig, ax
 
@@ -300,6 +324,8 @@ def generate_a4_report(buildings_gdf, border_gdf=None, footprint_area_column="gr
     # construction years
 
     ax_year = fig.add_subplot(gs[1, :])
+    
+    years = buildings_gdf["baujahr"].dropna()
     plot_construction_year_histogram(buildings_gdf, ax=ax_year)
 
     # footprint distributions
@@ -338,6 +364,8 @@ def generate_a4_report_simple_solar(buildings_gdf, buildings_solar_gdf, border_g
     # construction years
 
     ax_year = fig.add_subplot(gs[1, :])
+    years = buildings_gdf["baujahr"].dropna()
+    #bins = np.arange(years.min()//10*10, years.max()+10, 10)
     plot_construction_year_histogram(buildings_gdf, ax=ax_year)
 
     # footprint distributions
@@ -364,7 +392,7 @@ def generate_a4_report_simple_solar(buildings_gdf, buildings_solar_gdf, border_g
 def build_report(border_coordinates: list, title: str=None, save_file: str=None):
     border_poly = Polygon(border_coordinates)
     border_gdf = gpd.GeoDataFrame(geometry=[border_poly], crs="EPSG:4326")
-    buildings_gdf = gpd.read_parquet("buildings.parquet")
+    buildings_gdf = gpd.read_parquet("buildings_cleaned_up.parquet")
     buildings_gdf = buildings_gdf.to_crs("EPSG:4326")
     
     buildings_solar_gdf = gpd.read_parquet("buildings_solar_with_geometry.parquet")
