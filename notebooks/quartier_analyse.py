@@ -251,8 +251,8 @@ def plot_construction_year_histogram(buildings_gdf, bins=None, ax=None):
     return fig, ax
 
 
-def plot_area_distribution(buildings_gdf, area_column, area_label, building_type="Sonstige", top_n=None, ax=None):
-
+def plot_area_distribution(buildings_gdf, area_column, area_label, total_area_label="Gesamtfläche", building_type="Wohngebäude", top_n=None, ax=None):
+    
     subset = buildings_gdf[buildings_gdf["building_type"] == building_type].copy()
     subset = subset.dropna(subset=[area_column])
     subset = subset.sort_values(area_column, ascending=False)
@@ -270,7 +270,7 @@ def plot_area_distribution(buildings_gdf, area_column, area_label, building_type
         fig = ax.figure
     
     legend_elements = []
-    legend_elements.append(Patch(facecolor=color, label=f"Gesamtfläche: {total_area:,.0f} m²"))
+    legend_elements.append(Patch(facecolor=color, label=f"{total_area_label}: {total_area:,.0f} m²"))
     
     ax.bar(range(len(subset)), subset[area_column], color=color)
     ax.set_title(f"{building_type} - {area_label}")
@@ -280,38 +280,7 @@ def plot_area_distribution(buildings_gdf, area_column, area_label, building_type
 
     return fig, ax
 
-
-def plot_roof_area_distribution(buildings_gdf, area_column, area_label, top_n=None, ax=None):
-
-    subset = buildings_gdf[buildings_gdf["area"] != 0].copy()
-    subset = subset.dropna(subset=[area_column])
-    subset = subset.sort_values(area_column, ascending=False)
-
-    total_usable = subset["usable_roof_area"].sum()
-
-    color = "tab:orange"
-
-    if top_n:
-        subset = subset.head(top_n)
-
-    if ax is None:
-        figsize=(12, 6)
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.figure
-
-    legend_elements = []
-    legend_elements.append(Patch(facecolor=color, label=f"Gesamte nutzbare Dachfläche: {total_usable:,.0f} m²"))
-
-    ax.bar(range(len(subset)), subset[area_column], color=color)
-    ax.set_title(f"{area_label}")
-    ax.set_xlabel("Gebäude")
-    ax.set_ylabel(f"{area_label} [m²]")
-    ax.legend(handles=legend_elements)
-
-    return fig, ax
-
-def generate_a4_report(buildings_gdf, border_gdf=None, footprint_area_column="grundflaeche", roof_area_column="usable_roof_area", title="Quartieranalyse"):
+def generate_a4_report(buildings_gdf, border_gdf=None, footprint_area_column="grundflaeche", roof_area_column="pvarea", title="Quartieranalyse"):
 
     fig = plt.figure(figsize=(8.27, 11.69))
     gs = GridSpec(nrows=5, ncols=2, figure=fig, height_ratios=[3.0, 1.5, 1.0,1.0,1.0])
@@ -330,79 +299,58 @@ def generate_a4_report(buildings_gdf, border_gdf=None, footprint_area_column="gr
 
     # footprint distributions
 
-    # Need to atomate it like other plots
+    # Need to automate it like other plots
     building_types = [
         "Wohngebäude",
         "Mischgebäude",
         "Gewerbegebäude"
     ]
-
-    for row, building_type in enumerate(building_types):
-        ax = fig.add_subplot(gs[row + 2, 0])
-        plot_area_distribution(buildings_gdf, building_type, footprint_area_column, "Grundfläche", ax=ax)
-
-    # roof distributions
-
-    for row, building_type in enumerate(building_types):
-        ax = fig.add_subplot(gs[row + 2, 1])
-        plot_area_distribution(buildings_gdf, building_type, roof_area_column, "Nutzbare Dachfläche", ax=ax)
-
-    plt.tight_layout()
-
-    return fig
-
-def generate_a4_report_simple_solar(buildings_gdf, buildings_solar_gdf, border_gdf=None, footprint_area_column="grundflaeche", roof_area_column="usable_roof_area", title="Quartieranalyse"):
-
-    fig = plt.figure(figsize=(8.27, 11.69))
-    gs = GridSpec(nrows=5, ncols=2, figure=fig, height_ratios=[3.0, 1.5, 1.0,1.0,1.0])
-
-    # map
-
-    ax_map = fig.add_subplot(gs[0, :])
-    plot_building_type_map(buildings_gdf, border_gdf, ax=ax_map, title=title)
-
-    # construction years
-
-    ax_year = fig.add_subplot(gs[1, :])
-    years = buildings_gdf["baujahr"].dropna()
-    #bins = np.arange(years.min()//10*10, years.max()+10, 10)
-    plot_construction_year_histogram(buildings_gdf, ax=ax_year)
 
     # footprint distributions
-
-    # Need to atomate it like other plots
-    building_types = [
-        "Wohngebäude",
-        "Mischgebäude",
-        "Gewerbegebäude"
-    ]
-
     for row, building_type in enumerate(building_types):
-        ax = fig.add_subplot(gs[row + 2, 0]) 
-        plot_area_distribution(buildings_gdf=buildings_gdf, building_type=building_type, area_column=footprint_area_column, area_label="Grundfläche", ax=ax)
-
-    # roof distributions
-    ax = fig.add_subplot(gs[2, 1])
-    plot_roof_area_distribution(buildings_gdf=buildings_solar_gdf, area_column=roof_area_column, area_label="Nutzbare Dachfläche", ax=ax)
+        ax = fig.add_subplot(gs[row + 2, 0])
+        plot_area_distribution(buildings_gdf=buildings_gdf, area_column=footprint_area_column, area_label="Grundfläche", total_area_label="Gesamtfläche", building_type=building_type, ax=ax)
+        
+    # usable roof distributions
+    for row, building_type in enumerate(building_types):
+        ax = fig.add_subplot(gs[row + 2, 1])
+        plot_area_distribution(buildings_gdf=buildings_gdf, area_column=roof_area_column, area_label="Nutzbare Dachfläche", total_area_label="Gesamte nutzbare Dachfläche", building_type=building_type, ax=ax)
 
     plt.tight_layout()
 
     return fig
 
 def build_report(border_coordinates: list, title: str=None, save_file: str=None):
+    report_gdf = limit_geodata(border_coordinates)
+    fig = generate_a4_report(report_gdf, title=title)
+    if save_file is not None:
+        fig.savefig(save_file, dpi=300, bbox_inches="tight")
+
+def limit_geodata(border_coordinates: list):
     border_poly = Polygon(border_coordinates)
     border_gdf = gpd.GeoDataFrame(geometry=[border_poly], crs="EPSG:4326")
     buildings_gdf = gpd.read_parquet("buildings_cleaned_up.parquet")
     buildings_gdf = buildings_gdf.to_crs("EPSG:4326")
     
-    buildings_solar_gdf = gpd.read_parquet("buildings_solar_with_geometry.parquet")
-    buildings_solar_gdf = buildings_solar_gdf.to_crs("EPSG:4326")
-
-    limited_gdf = limit_gdf(buildings_gdf, border_gdf)
-    report_solar_gdf = limit_gdf(buildings_solar_gdf, border_gdf)
-
-    report_gdf = add_building_category(limited_gdf)
+    solar_gdf = gpd.read_parquet("buildings_solar_with_geometry.parquet")
+    solar_gdf = solar_gdf.to_crs("EPSG:4326")
     
-    fig = generate_a4_report_simple_solar(report_gdf, report_solar_gdf, title=title)
-    if save_file is not None:
-        fig.savefig(save_file, dpi=300, bbox_inches="tight")
+    limited_gdf = limit_gdf(buildings_gdf, border_gdf)
+    limited_solar_gdf = limit_gdf(solar_gdf, border_gdf)
+
+    # use representative point for solar as join key
+    limited_solar_gdf = limited_solar_gdf.copy()
+    limited_solar_gdf["geometry"] = limited_solar_gdf.geometry.to_crs("EPSG:25832").representative_point().to_crs("EPSG:4326")
+
+    # left join: buildings are the base, unmatched solar is irrelevant
+    merged = limited_gdf.sjoin(limited_solar_gdf, how="left", predicate="contains")
+    # drop duplicate matches (one building matched multiple solar entries)
+    merged = merged[~merged.index.duplicated(keep="first")]
+
+    matched = merged[merged['index_right'].notna()]
+    unmatched = merged[merged['index_right'].isna()]
+    print(f"Matched alkis data to solar data:   {merged['index_right'].notna().sum()}")
+    print(f"Ramains unmatched: {merged['index_right'].isna().sum()}")
+    
+    report_gdf = add_building_category(merged)
+    return report_gdf

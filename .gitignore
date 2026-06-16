@@ -8,4 +8,4 @@ build/
 *.egg-info/
 results/*
 cache/*
-notebooks/maps/*
+notebooks/data/gml/*
