@@ -14,14 +14,15 @@ import random
 # Representative annual heat demand per energy efficiency class, kWh/(m^2*a).
 # Approximate midpoints of typical German Energieausweis bands - placeholder values
 EFFICIENCY_CLASS_KWH_PER_M2 = {
-    "A": 40,
-    "B": 65,
-    "C": 85,
-    "D": 115,
-    "E": 145,
-    "F": 180,
-    "G": 220,
-    "H": 260,
+    "A+": 30,
+    "A": 50,
+    "B": 75,
+    "C": 100,
+    "D": 130,
+    "E": 160,
+    "F": 200,
+    "G": 250,
+    "H": 400,
 }
 
 DEFAULT_ELECTRICITY_DEMAND_MEAN = 3000.0  # kWh/a, baseline household electricity use

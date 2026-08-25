@@ -47,18 +47,19 @@ DECISION_RULES = {
 
 class HouseholdAgent(mesa.Agent):
     def __init__(self, model: mesa.Model, agent_type: AgentType, energy_profile: EnergyProfile, price_model: PriceModel, area_m2: float = 70.0, 
-                 gas_efficiency: float = GAS_BOILER_EFFICIENCY, heat_pump_cop: float = HEAT_PUMP_COP):
+                 gas_efficiency: float = GAS_BOILER_EFFICIENCY, heat_pump_cop: float = HEAT_PUMP_COP, investment_cost: float = 10000.0):
         super().__init__(model)
         self.agent_type = agent_type
         self.energy_profile = energy_profile
         self.price_model = price_model
         self.area_m2 = area_m2
-        self.c_before = None
-        self.c_after = None
+        self.c_before = 0.0
+        self.c_after = 0.0
         self.wants_transformation = False
 
         self.gas_efficiency = gas_efficiency
         self.heat_pump_cop = heat_pump_cop
+        self.investment_cost = investment_cost
 
     def step(self):
         year = self.model.current_year
@@ -68,13 +69,14 @@ class HouseholdAgent(mesa.Agent):
         heat_demand = self.energy_profile.annual_heat_demand()
         elec_demand = self.energy_profile.annual_electricity_demand()
 
+        # c_before = cost of current heating system (gas boiler) + electricity demand
         gas_consumption = heat_demand / self.gas_efficiency
         self.c_before = elec_demand * elec_price + gas_consumption * gas_price
 
+        # c_after = cost of new heating system (heat pump) + electricity demand + investemt cost
+        # Investment shares intentionally excluded for now
         hp_consumption = heat_demand / self.heat_pump_cop
-        # Investment share intentionally excluded for now --
-        # Add an annuity term here once financing assumptions are defined.
-        self.c_after = (elec_demand + hp_consumption) * elec_price
+        self.c_after = (elec_demand + hp_consumption) * elec_price + self.investment_cost
 
         self.wants_transformation = DECISION_RULES[self.agent_type](self.c_before, self.c_after)
 
