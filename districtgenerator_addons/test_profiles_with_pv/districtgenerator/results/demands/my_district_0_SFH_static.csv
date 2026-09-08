@@ -1,0 +1,2 @@
+nb_units;nb_occ;ev_capacity;heatload;bivalent;heatlimit;car_info
+1;[2];[0.0];12012.804;8094.649;775.020;"[{""car_id"": ""Car_0"", ""type"": ""ICE"", ""location"": ""Residential"", ""battery_capacity_wh"": 0}]"
