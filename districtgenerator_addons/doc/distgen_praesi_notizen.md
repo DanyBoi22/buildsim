@@ -27,7 +27,8 @@ generateDemands()          richardsonpy + OpenDHW + Thermomodell -> Profile
 designDecentralDevices()   PV und Solarthermie
 ```
 
-Wichtig: **PV läuft nicht in `generateDemands()`**, sondern im letzten Schritt und ist unabhängig von dem Gebrauch. Ein Solver wird für keinen dieser Schritte gebraucht.
+Wichtig: **PV läuft nicht in `generateDemands()`**, sondern im letzten Schritt und ist unabhängig von dem Gebrauch. Ein Solver wird für keinen dieser Schritte gebraucht. Strom und Warmwasser variieren pro Wohnung sind aber am Ende aggregiert. Raumwärme wird nur für das ganze Gebäude ausgerechnet, die ist aber proportional zu der Fläche.
+
 
 ---
 
@@ -61,17 +62,17 @@ Die drei Aussagen, die man daraus zeigen kann:
 3. **Saisonalität**: Wärme konzentriert sich auf Okt–Apr, PV auf Apr–Aug. Die
    Grafik `--plot balance` zeigt genau diese Gegenläufigkeit.
 
-![image1](../test_profiles_with_pv/energy.png)
-
+![image1](../test_profiles_with_pv/energy.png "Wärme-, Warmwasser- und Strombedarf aggregiert für jeden Monat über ein Jahr")
 ```bash
 python plot_district.py --scenario my_district --plot energy --freq ME
 ```
-![image2](../test_profiles_with_pv/balance_pv.png)
 
+![image2](../test_profiles_with_pv/balance_pv.png "Strombedarf und PV-Erzeugung aggregiert für jeden Monat über ein Jahr")
 ```bash
 python plot_district.py --scenario my_district --plot balance --cols elec,pv --freq ME
 ```
-![image3](../test_profiles_with_pv/profiles_day.png)
+
+![image3](../test_profiles_with_pv/profiles_day.png "Wärme-, Warmwasser- und Strombedarf sowie PV-Erzeugung profile für einen Tag")
 ```bash
 python plot_district.py --scenario my_district --plot profiles --cols heating,elec,dhw,pv --start 2015-01-15 --end 2015-01-15
 ```
@@ -109,22 +110,21 @@ python plot_district.py --scenario my_district --plot profiles --cols heating,el
 
 **Nicht per Konfiguration einstellbar, nur per Code-Eingriff:**
 
-- Wohnungszahl und Bewohner pro Wohnung — werden gewürfelt. Unser
+- Wohnungszahl und Bewohner pro Wohnung - werden gewürfelt. Unser
   `run_district.py` überschreibt beides (`FLAT_AREA`, `OCCUPANTS`).
-  Bewohner sind hart auf 1..5 begrenzt.
+  Bewohner sind auf 1-4(5?) begrenzt.
 - Dachneigung: in `datahandler.py` fest auf 35° verdrahtet.
 - Wohnungen innerhalb eines Gebäudes haben immer dieselbe Fläche.
-- Ein Gebäude ist genau **eine** Thermozone: ein Wärmeprofil je Gebäude,
-  unabhängig von der Wohnungszahl.
-
-Ohne Wirkung auf die Profile: die Spalte `heater`. Sie wird erst in der
+- Ein Gebäude ist genau eine Thermozone: ein Wärmeprofil je Gebäude,
+  unabhängig von der Wohnungszahl. 
+- Die Spalte `heater` ist für Profile egal. Sie wird erst in der
 Optimierung gebraucht.
 
 ---
 
 # Wie wird gerechnet
 
-| Deterministic | Stochastic |
+| Deterministisch (tabellarisch) | Stochastisch |
 |---|---|
 | Wetter (Ortsgenaue TRY, BBSR 2020 / DWD) | Wohnungszahl (Zensus-2022-Verteilung) |
 | Gebäudehülle, U-Werte, Flächen (TEASER (Remmen et al. 2018) mit TABULA/IWU (Loga et al. 2015)) | Bewohner je Wohnung |
@@ -135,11 +135,11 @@ Optimierung gebraucht.
 
 **Weitere Grenzen, die man nennen sollte:**
 
-- Archetypen, keine realen Gebäude — geeignet für repräsentative Analysen.
+- Archetypen, keine realen Gebäude.
 - Eine Thermozone je Gebäude, keine wohnungsscharfen Wärmeprofile.
 - Ein Wetterjahr; `TRYTYPE=Somm`/`Wint` liefert Extremvarianten für
   Robustheitsprüfungen.
 - Kein Netzmodell auf der Bedarfsseite, nur ein Anschlusspunkt mit optionaler
   Leistungsgrenze.
 - Für belastbare Vergleiche mehrere Ziehungen rechnen und die
-Streuung angeben. Die Bibliothek setzt selbst keinen Seed, deswegen muss `random.seed()` vor `generateBuildings()` gesetzt werden. (Achtung aktuell beeinflusst es Wohnungen, Bewohner und Jahresverbräuche)
+Streuung angeben. Die Bibliothek setzt selbst keinen Seed, deswegen muss `random.seed()` vor `generateBuildings()` gesetzt werden. (Achtung aktuell beeinflusst es Wohnungen, Bewohner und Jahresverbräuche 08.09.2026)
