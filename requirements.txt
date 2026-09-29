@@ -1,6 +1,6 @@
-pandas
-osmnx
+folium
 geopandas
 mesa
 mesa-geo
-folium
+osmnx
+pandas

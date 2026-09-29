@@ -24,16 +24,16 @@ from districtgenerator.classes import users as dg_users
 SCENARIO = "my_district"
 ENV_CONFIG = ".env.CONFIG.MY_CONFIG"
 
-SEED = 1234
+SEED = 12345
 # int -> reproduzierbare Wohnungs-/Bewohnerzahlen. None -> jeder Lauf anders.
 
-FLAT_AREA = 75.0
+FLAT_AREA = None
 # m2 pro Wohnung fuer MFH und AB. nb_flats = round(area / FLAT_AREA).
 # Bei area=600 und FLAT_AREA=75 also 8 Wohnungen.
 # None -> originale Zensus-Ziehung der Lib.
 # SFH und TH haben per Definition immer genau eine Wohnung.
 
-OCCUPANTS = 2
+OCCUPANTS = None
 # Bewohner pro Wohnung. Erlaubt:
 #   int   -> jede Wohnung gleich viele, z.B. 2
 #   list  -> pro Wohnung, wird bei Bedarf zyklisch wiederholt,
@@ -101,17 +101,30 @@ def main():
     data.initializeBuildings()
     data.generateBuildings()
 
-    print("\nGebaeude nach dem Patch:")
+    print("\n========== Gebäude Information ==========")
+
     for b in data.district:
         f = b["buildingFeatures"]
+        e = b["envelope"]
         u = b["user"]
-        print(
-            f"  id {f['id']:>2}  {f['building']:<4} {f['area']:>6.0f} m2"
-            f"  Wohnungen {u.nb_flats:>3}"
-            f"  Bewohner {u.nb_occ}"
-            f"  Strom/a {u.annual_el_demand:>7.0f} kWh"
-        )
 
+        print(f"\nBuilding {f['id']} ({f['building']})")
+
+        print(f"Wohnungen:          {u.nb_flats}")
+        print(f"Bewohner:           {u.nb_occ}")
+
+        print(f"Gesamtfläche:       {f['area']} m²")
+        print(f"Dachfläche:         {e.A['opaque']['roof']} m²")
+        print(f"Grundfläche:        {e.A['opaque']['groundfloor']} m²")
+
+        print(f"Implizierte Höhe:   {e.V / e.A['opaque']['groundfloor']:.2f} m")
+        print(f"Gesamtfläche / Grundfläche: {f['area'] / e.A['opaque']['groundfloor']:.2f}")
+
+        print(f"Volumen:            {e.V} m³")
+        print(f"Externe Wände:      {e.A['opaque']['walls']} m²")
+
+
+    #return
 
     data.generateDemands(calcUserProfiles=CALC_PROFILES, saveUserProfiles=SAVE_PROFILES)
 
