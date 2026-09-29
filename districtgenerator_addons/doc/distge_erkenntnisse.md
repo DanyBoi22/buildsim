@@ -124,3 +124,9 @@ Somit kann DG die echte Gebäudegeometrie übernehmen und basierend darauf die B
 - tatsächlicher Sanierungszustand
 
 Alle diese Daten können nur angenommen werden. 
+
+ToDo:
+- Wrapper mit Datenaufbereitung für DG
+- 1 CSV pro Gebäude mit Profilen
+- Außen Temperatur pro Zeiteinheit raussuchen
+- Kleine präsi DG + GIS Karten

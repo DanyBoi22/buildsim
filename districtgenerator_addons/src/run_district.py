@@ -1,154 +1,219 @@
 """
-Districtgenerator-Lauf mit fester Wohnungs- und Bewohnerzahl.
+Einfacher Einstiegspunkt für DistrictGenerator.
 
-Wohnungszahl und Bewohner sind keine CSV-Felder, sondern werden in users.py
-gewuerfelt. Dieses Skript ueberschreibt die beiden zustaendigen Methoden,
-bevor generateBuildings() laeuft, und laesst danach alles unveraendert weiter.
-
-Aufruf:
-    python run_district.py
-
-Danach z.B.:
-    python plot_district.py --scenario my_district --plot energy --freq ME
+Beispiele:
+    python run_district.py -f scenario.csv
+    python run_district.py -f buildings.parquet
+    python run_district.py -f buildings.parquet --dry-run
 """
 
-import random as rd
+from __future__ import annotations
 
-from districtgenerator.classes import Datahandler
-from districtgenerator.classes import users as dg_users
+import argparse
+import json
+import sys
+from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Konfiguration
-# ---------------------------------------------------------------------------
-
-SCENARIO = "my_district"
-ENV_CONFIG = ".env.CONFIG.MY_CONFIG"
-
-SEED = 12345
-# int -> reproduzierbare Wohnungs-/Bewohnerzahlen. None -> jeder Lauf anders.
-
-FLAT_AREA = None
-# m2 pro Wohnung fuer MFH und AB. nb_flats = round(area / FLAT_AREA).
-# Bei area=600 und FLAT_AREA=75 also 8 Wohnungen.
-# None -> originale Zensus-Ziehung der Lib.
-# SFH und TH haben per Definition immer genau eine Wohnung.
-
-OCCUPANTS = None
-# Bewohner pro Wohnung. Erlaubt:
-#   int   -> jede Wohnung gleich viele, z.B. 2
-#   list  -> pro Wohnung, wird bei Bedarf zyklisch wiederholt,
-#            z.B. [1, 2, 2, 3, 1, 2, 4, 2]
-#   None  -> originale stochastische Ziehung der Lib
-# HARTE GRENZE: nur ganze Zahlen 1..5. Die Stromspiegel-Tabelle und
-# richardsonpy sind auf diesen Bereich definiert; alles andere wirft
-# einen KeyError.
-
-GENERATE_PV = True
-
-CALC_PROFILES = True
-SAVE_PROFILES = True
-
-# ---------------------------------------------------------------------------
-# Patches
-# ---------------------------------------------------------------------------
-
-_orig_flats = dg_users.Users.generate_number_flats_and_rooms
-_orig_occ = dg_users.Users.generate_number_occupants
-
-RESIDENTIAL_MULTI = ("MFH", "AB")
-RESIDENTIAL_ALL = ("SFH", "TH", "MFH", "AB")
+from gis_preprocessor import GisPreprocessor, GisPreprocessorConfig
+from simulation_runner import SimulationConfig, run_simulation
 
 
-def _patched_flats(self, area):
-    if FLAT_AREA and self.building in RESIDENTIAL_MULTI:
-        self.nb_flats = max(round(area / FLAT_AREA), 2)
-    else:
-        _orig_flats(self, area)
+SUPPORTED_INPUTS = {".csv", ".parquet", ".gml", ".xml"}
 
 
-def _patched_occupants(self, area):
-    if OCCUPANTS is None or self.building not in RESIDENTIAL_ALL:
-        _orig_occ(self, area)
-        return
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "DistrictGenerator Wrapper: vorhandene DG-Szenario-CSV ausführen "
+            "oder ein GIS-GML/GeoParquet vorverarbeiten und anschließend simulieren."
+        )
+    )
 
-    if isinstance(OCCUPANTS, int):
-        values = [OCCUPANTS] * self.nb_flats
-    else:
-        values = [OCCUPANTS[i % len(OCCUPANTS)] for i in range(self.nb_flats)]
+    parser.add_argument(
+        "-f",
+        "--file",
+        required=True,
+        help="Eingabedatei: DG-Szenario-CSV oder GIS-Datei (.parquet/.gml/.xml).",
+    )
+    parser.add_argument(
+        "--env-config",
+        default=None,
+        help="Optionaler Pfad zu einer DG-.env-Konfiguration.",
+    )
+    parser.add_argument(
+        "--result-dir",
+        default="results",
+        help="Ausgabeverzeichnis für DG-Ergebnisse (Standard: results).",
+    )
+    parser.add_argument(
+        "--scenario-dir",
+        default="generated_scenarios",
+        help="Verzeichnis für aus GIS erzeugte Szenario-CSV-Dateien.",
+    )
+    parser.add_argument(
+        "--output-scenario",
+        default=None,
+        help="Optionaler exakter Pfad für die aus GIS erzeugte Szenario-CSV.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Nur GIS verarbeiten und CSV schreiben; keine DG-Simulation starten.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Zufalls-Seed für reproduzierbare DG-Stichproben.",
+    )
 
-    clamped = [min(max(int(v), 1), 5) for v in values]
-    if clamped != [int(v) for v in values]:
-        print(f"  Warnung: Bewohnerzahlen auf 1..5 begrenzt -> {clamped}")
+    # GIS-Feldzuordnung
+    parser.add_argument(
+        "--type-field",
+        default=None,
+        help="Optionales GIS-Feld, das bereits SFH/TH/MFH/AB enthält.",
+    )
+    parser.add_argument(
+        "--type-map",
+        default=None,
+        help=(
+            "Optionaler JSON-Pfad für die Zuordnung von GIS-Gebäudefunktionen "
+            "zu DG-Typen, z.B. {'31001':'SFH','31002':'MFH'}."
+        ),
+    )
+    parser.add_argument("--year-field", default="baujahr")
+    parser.add_argument("--footprint-field", default="grundflaeche")
+    parser.add_argument("--pv-field", default="solar_pvarea_value")
+    parser.add_argument("--pv-side1-field", default=None)
+    parser.add_argument("--pv-side2-field", default=None)
+    parser.add_argument("--gamma-field", default=None)
+    parser.add_argument(
+        "--gml-layer",
+        default=None,
+        help="Optionaler Layername bei GML-Dateien.",
+    )
 
-    self.nb_occ = clamped
-
-
-dg_users.Users.generate_number_flats_and_rooms = _patched_flats
-dg_users.Users.generate_number_occupants = _patched_occupants
-
-# ---------------------------------------------------------------------------
-# Lauf
-# ---------------------------------------------------------------------------
-
-
-def main():
-
-    if SEED is not None:
-        rd.seed(SEED)
-
-    data = Datahandler(scenario_name=SCENARIO, env_path=ENV_CONFIG)
-    data.generateEnvironment()
-    data.initializeBuildings()
-    data.generateBuildings()
-
-    print("\n========== Gebäude Information ==========")
-
-    for b in data.district:
-        f = b["buildingFeatures"]
-        e = b["envelope"]
-        u = b["user"]
-
-        print(f"\nBuilding {f['id']} ({f['building']})")
-
-        print(f"Wohnungen:          {u.nb_flats}")
-        print(f"Bewohner:           {u.nb_occ}")
-
-        print(f"Gesamtfläche:       {f['area']} m²")
-        print(f"Dachfläche:         {e.A['opaque']['roof']} m²")
-        print(f"Grundfläche:        {e.A['opaque']['groundfloor']} m²")
-
-        print(f"Implizierte Höhe:   {e.V / e.A['opaque']['groundfloor']:.2f} m")
-        print(f"Gesamtfläche / Grundfläche: {f['area'] / e.A['opaque']['groundfloor']:.2f}")
-
-        print(f"Volumen:            {e.V} m³")
-        print(f"Externe Wände:      {e.A['opaque']['walls']} m²")
+    return parser
 
 
-    #return
+def load_type_map(path: str | None) -> dict[str, str]:
+    if path is None:
+        return {}
 
-    data.generateDemands(calcUserProfiles=CALC_PROFILES, saveUserProfiles=SAVE_PROFILES)
+    mapping_path = Path(path)
+    if not mapping_path.is_file():
+        raise FileNotFoundError(f"Type-Mapping nicht gefunden: {mapping_path}")
 
-    if GENERATE_PV:
-        data.designDecentralDevices(saveGenerationProfiles=True)
+    try:
+        data = json.loads(mapping_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Ungültiges JSON in {mapping_path}: {exc}") from exc
 
-    print("\nJahressummen:")
-    hours_per_step = data.time["timeResolution"] / 3600
-    for b in data.district:
-        f = b["buildingFeatures"]
-        u = b["user"]
-        kwh = lambda x: sum(x) * hours_per_step / 1000
-        pv = f"  PV {kwh(u.generationPV):>7.0f} kWh" if GENERATE_PV else ""
-        print(
-            f"  id {f['id']:>2}  {f['building']:<4}"
-            f"  Heizung {kwh(u.heat):>9.0f} kWh"
-            f"  TWW {kwh(u.dhw):>7.0f} kWh"
-            f"  Strom {kwh(u.elec):>7.0f} kWh"
-            f"{pv}"
-            f"  Heizlast {b['envelope'].heatload / 1000:>6.1f} kW"
+    if not isinstance(data, dict):
+        raise ValueError("Das Type-Mapping muss ein JSON-Objekt sein.")
+
+    normalized: dict[str, str] = {}
+    for key, value in data.items():
+        if value not in {"SFH", "TH", "MFH", "AB"}:
+            raise ValueError(
+                f"Ungültiger DG-Gebäudetyp im Mapping: {value!r}. "
+                "Erlaubt sind SFH, TH, MFH, AB."
+            )
+        normalized[str(key)] = value
+
+    return normalized
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    input_path = Path(args.file).expanduser().resolve()
+
+    if not input_path.is_file():
+        parser.error(f"Eingabedatei nicht gefunden: {input_path}")
+
+    suffix = input_path.suffix.lower()
+
+    if suffix not in SUPPORTED_INPUTS:
+        parser.error(
+            f"Nicht unterstütztes Dateiformat {suffix!r}. "
+            "Erlaubt: .csv, .parquet, .gml, .xml"
         )
 
-    return data
+    try:
+        type_map = load_type_map(args.type_map)
+
+        # -------------------------------------------------------------
+        # Option 1: Bereits vorhandene DG-Szenario-CSV direkt ausführen.
+        # -------------------------------------------------------------
+        if suffix == ".csv":
+            if args.output_scenario:
+                parser.error("--output-scenario ist nur bei GIS-Eingaben sinnvoll.")
+
+            config = SimulationConfig(
+                scenario_path=input_path,
+                env_path=args.env_config,
+                result_dir=Path(args.result_dir),
+                seed=args.seed,
+            )
+            run_simulation(config)
+            return 0
+
+        # -------------------------------------------------------------
+        # Option 2: GIS -> DG-Szenario-CSV -> DG-Simulation.
+        # -------------------------------------------------------------
+        output_scenario = (
+            Path(args.output_scenario).expanduser().resolve()
+            if args.output_scenario
+            else Path(args.scenario_dir).expanduser().resolve()
+            / f"{input_path.stem}_dg.csv"
+        )
+
+        preprocess_config = GisPreprocessorConfig(
+            type_field=args.type_field,
+            type_mapping=type_map,
+            year_field=args.year_field,
+            footprint_field=args.footprint_field,
+            pv_field=args.pv_field,
+            pv_side1_field=args.pv_side1_field,
+            pv_side2_field=args.pv_side2_field,
+            gamma_field=args.gamma_field,
+            gml_layer=args.gml_layer,
+        )
+
+        preprocessor = GisPreprocessor(preprocess_config)
+        scenario_path = preprocessor.create_scenario(
+            input_path=input_path,
+            output_scenario=output_scenario,
+        )
+
+        print(f"\nGIS-Vorverarbeitung abgeschlossen.")
+        print(f"Szenario: {scenario_path}")
+
+        if args.dry_run:
+            print("Dry-Run: keine DistrictGenerator-Simulation gestartet.")
+            return 0
+
+        simulation_config = SimulationConfig(
+            scenario_path=scenario_path,
+            env_path=args.env_config,
+            result_dir=Path(args.result_dir),
+            seed=args.seed,
+        )
+        run_simulation(simulation_config)
+        return 0
+
+    except (FileNotFoundError, ValueError, RuntimeError, ImportError) as exc:
+        print(f"\nFEHLER: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(
+            f"\nUNERWARTETER FEHLER: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
