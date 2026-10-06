@@ -156,7 +156,7 @@ class GisPreprocessor:
                     "id": new_id,
                     "building": building_type,
                     "year": year,
-                    "retrofit": self.config.retrofit,
+                    "retrofit": int(row.get("retrofit", self.config.retrofit)),
                     "construction_type": self.config.construction_type,
                     "night_setback": self.config.night_setback,
                     "area": round(dg_area, 6),
